@@ -125,6 +125,7 @@ std::string exec(const char* cmd) {
 
 
 int print_info(const char * device){
+  // [linux hidraw example](https://github.com/torvalds/linux/blob/master/samples/hidraw/hid-example.c)
 	int fd;
 	int i, res, desc_size = 0;
 	char buf[256];
@@ -137,7 +138,7 @@ int print_info(const char * device){
 		return -1;
 	}
 
-    memset(&rpt_desc, 0x0, sizeof(rpt_desc));
+	memset(&rpt_desc, 0x0, sizeof(rpt_desc));
 	memset(&info, 0x0, sizeof(info));
 	memset(buf, 0x0, sizeof(buf));
 
@@ -160,14 +161,14 @@ int print_info(const char * device){
 		puts("\n");
 	}
     
-    /* Get Physical Location */
+	/* Get Physical Location */
 	res = ioctl(fd, HIDIOCGRAWPHYS(256), buf);
 	if (res < 0)
 		perror("HIDIOCGRAWPHYS");
 	else
 		printf("Raw Phys: %s\n", buf);
     
-    /* Get Raw Info */
+	/* Get Raw Info */
 	res = ioctl(fd, HIDIOCGRAWINFO, &info);
 	if (res < 0) {
 		perror("HIDIOCGRAWINFO");
@@ -178,7 +179,7 @@ int print_info(const char * device){
 		printf("\tvendor: 0x%04hx\n", info.vendor);
 		printf("\tproduct: 0x%04hx\n", info.product);
 	}
-    return fd;
+	return fd;
 }
 
 int str2int(const string & s){
