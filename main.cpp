@@ -8,6 +8,7 @@
 #include <cmath>
 
 /* Linux */
+#include <linux/version.h>
 #include <linux/types.h>
 #include <linux/input.h>
 #include <linux/hidraw.h>
@@ -22,18 +23,12 @@
 #define HIDIOCGFEATURE(len)    _IOC(_IOC_WRITE|_IOC_READ, 'H', 0x07, len)
 #endif
 
-
 /* Unix */
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-
-/* Linux */
-#include <linux/types.h>
-#include <linux/input.h>
-#include <linux/hidraw.h>
 
 /* C */
 #include <stdio.h>
@@ -48,7 +43,7 @@ using namespace std;
 
 std::string exec(const char* cmd);
 
-char const * cpu = "grep 'cpu ' /proc/stat | awk '{usage=($2+$4)/($2+$4+$5)*100} END {print usage}'";
+char const * cpu = "top -n1 -b  | head -n 4 | awk '/Cpu/ { print 100-$8 }'";
 char const * gpu = "nvidia-smi --query-gpu=utilization.gpu --format=csv | tail -n 1 | cut -f1 -d' '";
 char const * gem = "nvidia-smi --query-gpu=memory.used,memory.total --format=csv | tail -n 1 | tr ',' ' ' | awk '{ print $1/$3*100}'";
 char const * mem = "free | grep 'Mem' | awk '{usage=($3/$2)*100} END {print usage}'";
@@ -68,23 +63,35 @@ vector<uint8_t> quantile(int x);
 const char *bus_str(int bus);
 int print_info(const char * device);
 
+template<typename T=milli>
+chrono::duration<double, T> duration_to_now(chrono::steady_clock::time_point start){
+  chrono::duration<double, T> dif =  chrono::steady_clock::now()- start;
+  return dif;
+}
 int main( int argc, char * argv[] ){
-  auto start = chrono::steady_clock::now();
+  const auto report_interval = chrono::milliseconds(1000);
   const char * device = "/dev/hidraw3";
   int fd = print_info(device);
   if(fd==-1) return 1;
-  int flag = 100;
+  int flag = 1;
   int off_set = 2;
   vector<int> vals(5,0);
   vector<vector<uint8_t>> chunks(5, vector<uint8_t>(5,0));
   char msg[32]={0};
-  while(1){
+
+  auto start = chrono::steady_clock::now();
+  while(flag){
     future<int> fnet = async(get_net, 100);
-    vals[0] = get_cpu();
+    future<int> fcpu = async(get_cpu);
+    //clog << " duration(ms) " << duration_to_now(start).count()  << '\n'; 
     vals[1] = get_mem();
     vals[2] = get_gpu();
     vals[3] = get_gem();
+    //clog << " duration(ms) " << duration_to_now(start).count()  << '\n'; 
+    vals[0] = fcpu.get();
     vals[4] = fnet.get();
+    //clog << " duration(ms) " << duration_to_now(start).count()  << '\n'; 
+    for(int i = 0; i < 5; ++i){ clog << vals[i] << (i==4? '\n':' '); }
     for(int i = 0; i < 5; ++i){
       chunks[i] = quantile(vals[i]);
     }
@@ -100,8 +107,8 @@ int main( int argc, char * argv[] ){
     } else {
         //printf("write() wrote %d bytes\n", res);
     }
-    sleep(1);
-    flag --;
+    this_thread::sleep_for(report_interval);
+    //flag --;
   }
   auto end = chrono::steady_clock::now();
   chrono::duration<double, milli> dif = end - start;
@@ -183,7 +190,7 @@ int print_info(const char * device){
 }
 
 int str2int(const string & s){
-  int res = int(stof(s));
+  int res = int(stod(s));
   return  min(res, 100);
 }
 

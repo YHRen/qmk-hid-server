@@ -1,7 +1,7 @@
 #
 
 ## cpu
-linux: `/proc/stat`
+linux: `top`
 macos: `ps -A | awk`
 
 ## memory 
