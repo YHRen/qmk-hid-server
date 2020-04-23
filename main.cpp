@@ -64,11 +64,26 @@ const char *bus_str(int bus);
 int print_info(const char * device);
 
 template<typename T=milli>
-chrono::duration<double, T> duration_to_now(chrono::steady_clock::time_point start){
-  chrono::duration<double, T> dif =  chrono::steady_clock::now()- start;
-  return dif;
+chrono::duration<double, T> duration_to_now(chrono::steady_clock::time_point start);
+
+bool is_collecting = false;
+int try_recv_msg(int fd, char *buf, int len){
+  int res = read(fd, buf, len);
+  cout << " is collectin = " << is_collecting << endl;
+  if( res < 0 ){
+    perror("read");
+  }else{
+    cout << "success" << endl;
+    is_collecting ^= 1;
+    cout << "starting" << 'a'+buf[0] << ' ' << 'a'+buf[1] << ' ' << 'a'+buf[2] << '\n';
+    cout << "starting" << (int)buf[0] << ' ' << (int)buf[1] << ' ' << (int)buf[2] << '\n';
+  }
+  cout << "res " << res << endl;
+  return res;
 }
+
 int main( int argc, char * argv[] ){
+  const int MSG_LEN = 32;
   const auto report_interval = chrono::milliseconds(1000);
   const char * device = "/dev/hidraw3";
   int fd = print_info(device);
@@ -77,37 +92,45 @@ int main( int argc, char * argv[] ){
   int off_set = 2;
   vector<int> vals(5,0);
   vector<vector<uint8_t>> chunks(5, vector<uint8_t>(5,0));
-  char msg[32]={0};
+  char msg[MSG_LEN]={0};
+  char rcv[MSG_LEN]={0};
 
   auto start = chrono::steady_clock::now();
+
   while(flag){
-    future<int> fnet = async(get_net, 100);
-    future<int> fcpu = async(get_cpu);
-    //clog << " duration(ms) " << duration_to_now(start).count()  << '\n'; 
-    vals[1] = get_mem();
-    vals[2] = get_gpu();
-    vals[3] = get_gem();
-    //clog << " duration(ms) " << duration_to_now(start).count()  << '\n'; 
-    vals[0] = fcpu.get();
-    vals[4] = fnet.get();
-    //clog << " duration(ms) " << duration_to_now(start).count()  << '\n'; 
-    for(int i = 0; i < 5; ++i){ clog << vals[i] << (i==4? '\n':' '); }
-    for(int i = 0; i < 5; ++i){
-      chunks[i] = quantile(vals[i]);
-    }
-    for(int i = 0; i < 5; ++i){
-      for(int j = 0; j < 5; ++j){
-        msg[off_set+i*5+j] = chunks[j][i];
+    if( is_collecting ){
+      future<int> fnet = async(get_net, 100);
+      future<int> fcpu = async(get_cpu);
+      //clog << " duration(ms) " << duration_to_now(start).count()  << '\n'; 
+      vals[1] = get_mem();
+      vals[2] = get_gpu();
+      vals[3] = get_gem();
+      //clog << " duration(ms) " << duration_to_now(start).count()  << '\n'; 
+      vals[0] = fcpu.get();
+      vals[4] = fnet.get();
+      //clog << " duration(ms) " << duration_to_now(start).count()  << '\n'; 
+      for(int i = 0; i < 5; ++i){ clog << vals[i] << (i==4? '\n':' '); }
+      for(int i = 0; i < 5; ++i){
+        chunks[i] = quantile(vals[i]);
       }
-    }
-    int res = write(fd, msg, 32);
-    if (res < 0) {
+      for(int i = 0; i < 5; ++i){
+        for(int j = 0; j < 5; ++j){
+          msg[off_set+i*5+j] = chunks[j][i];
+        }
+      }
+      int res = write(fd, msg, 32);
+      if (res < 0) {
         printf("Error: %d\n", errno);
         perror("write");
-    } else {
+      } else {
         //printf("write() wrote %d bytes\n", res);
+      }
+      try_recv_msg(fd, rcv, MSG_LEN);
+      this_thread::sleep_for(report_interval);
+    }else{
+      try_recv_msg(fd, rcv, MSG_LEN);
+      this_thread::sleep_for(report_interval);
     }
-    this_thread::sleep_for(report_interval);
     //flag --;
   }
   auto end = chrono::steady_clock::now();
@@ -238,4 +261,11 @@ const char * bus_str(int bus)
 		return "Other";
 		break;
 	}
+}
+
+
+template<typename T=milli>
+chrono::duration<double, T> duration_to_now(chrono::steady_clock::time_point start){
+  chrono::duration<double, T> dif =  chrono::steady_clock::now()- start;
+  return dif;
 }
